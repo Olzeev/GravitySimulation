@@ -34,6 +34,7 @@ using LiteMath::uint4;
 int SCREEN_WIDTH, SCREEN_HEIGHT;
 int max_m;
 float gradient_k;
+extern float friction_k;
 
 uint32_t float3_to_RGBA8(float3 c)
 {
@@ -43,7 +44,7 @@ uint32_t float3_to_RGBA8(float3 c)
   return 0xFF000000 | (r<<16) | (g<<8) | b;
 }
 
-LiteMath::float3 gradient(float t) {
+LiteMath::float3 gradient1(float t) {
   LiteMath::float3 res;
   res.x = -fabs(t - 0.25) * 6 + 1.5;
   res.y = -fabs(t - 0.5) * 6 + 2;
@@ -52,28 +53,34 @@ LiteMath::float3 gradient(float t) {
   return res;
 }
 
+LiteMath::float3 gradient2(float t) {
+  LiteMath::float3 res;
+  res.x = t;
+  res.z = t / 2;
+  res.y = t / 2;
+
+  //td::cout << res.x << ' ' << res.y << ' ' << res.z << std::endl;
+  return res;
+}
+
 void render(std::vector <Planet> &planets, int planets_count, GravityBuffer gravity_buffer, uint32_t *out_image, int W, int H)
 {
   #pragma omp parallel
-  for (int y=0;y<H * W;y++)
-  {
-      out_image[y] = float3_to_RGBA8(float3(0.0f));
-  }
-  #pragma omp parallel
   for (int x = 0; x < gravity_buffer.buffer_sizes[0].x; ++x) {
     for (int y = 0; y < gravity_buffer.buffer_sizes[0].y; ++y) {
+      
       if (gravity_buffer.buffer_levels[0][y * gravity_buffer.buffer_sizes[0].x + x] != 0) {
         float sum = 0;
-        for (int i = 0; i < gravity_buffer.cell_sizes.size(); ++i) {
+        for (int i = 0; i < 1/*gravity_buffer.cell_sizes.size()*/; ++i) {
           LiteMath::int2 floor_pos = LiteMath::int2(x / gravity_buffer.cell_sizes[i], y / gravity_buffer.cell_sizes[i]);
           sum += (float)gravity_buffer.buffer_levels[i][floor_pos.y * gravity_buffer.buffer_sizes[i].x + floor_pos.x] / gravity_buffer.cell_sizes[i] / gravity_buffer.cell_sizes[i];
         }
         
         sum /= gravity_buffer.cell_sizes.size();
         sum *= gradient_k;
-        //std::cout << sum << std::endl;
-        out_image[y * W + x] = float3_to_RGBA8(gradient(sum));
-      }
+        out_image[y * W + x] = float3_to_RGBA8(gradient2(sum));
+      } else
+        out_image[y * W + x] = float3_to_RGBA8(LiteMath::float3(0.0f));
     }
   }
 }
@@ -146,15 +153,32 @@ int main(int argc, char **args)
   std::vector <Planet> planets(planet_count);
   std::cout << "Max m\n";
   std::cin >> max_m;
+  LiteMath::float2 c1 = LiteMath::float2(200, 200);
+  LiteMath::float2 c2 = LiteMath::float2(SCREEN_WIDTH - 200, SCREEN_HEIGHT - 200);
+  LiteMath::float2 c3 = LiteMath::float2(200, SCREEN_HEIGHT - 200);
+  LiteMath::float2 c4 = LiteMath::float2(SCREEN_WIDTH - 200, 200);
   for (int i = 0; i < planet_count; ++i) {
-    planets[i].pos.x = float(rand()) / RAND_MAX * SCREEN_WIDTH;
-    planets[i].pos.y = float(rand()) / RAND_MAX * SCREEN_HEIGHT;
-    planets[i].m = 1;
+    
+    float des = float(rand()) / RAND_MAX;
+    float sigma = 10000;
+    float r = float(rand()) / RAND_MAX * 100;
+    float phi = 2 * LiteMath::M_PI * float(rand()) / RAND_MAX;
+    if (des < 0.25) {
+      planets[i].pos = c1 + r * LiteMath::float2(cos(phi), sin(phi));
+    } else if (des < 0.5){
+      planets[i].pos = c2 + r * LiteMath::float2(cos(phi), sin(phi));
+    } else {
+      planets[i].pos = c3 + r * LiteMath::float2(cos(phi), sin(phi));
+    }
+    
+
+    //planets[i].pos = LiteMath::float2(float(rand()) / RAND_MAX * SCREEN_WIDTH, float(rand()) / RAND_MAX * SCREEN_HEIGHT);
+    //planets[i].m = 1;
   }
   std::cout << "Gradient koef:\n";
   std::cin >> gradient_k;
-  //planets[0].m = 10000000;
-  //planets[planet_count - 1].m = 1000000;
+  std::cout << "Friction koef:\n";
+  std::cin >> friction_k;
   std::cout << "Buffer levels\n";
   int levels_count;
   std::cin >> levels_count;
