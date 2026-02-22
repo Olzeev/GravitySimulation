@@ -33,6 +33,7 @@ using LiteMath::uint4;
 
 int SCREEN_WIDTH, SCREEN_HEIGHT;
 int max_m;
+float gradient_k;
 
 uint32_t float3_to_RGBA8(float3 c)
 {
@@ -51,7 +52,7 @@ LiteMath::float3 gradient(float t) {
   return res;
 }
 
-void render(std::vector <Planet> &planets, int planets_count, CountBuffer count_buffer, uint32_t *out_image, int W, int H)
+void render(std::vector <Planet> &planets, int planets_count, GravityBuffer gravity_buffer, uint32_t *out_image, int W, int H)
 {
   #pragma omp parallel
   for (int y=0;y<H * W;y++)
@@ -59,19 +60,21 @@ void render(std::vector <Planet> &planets, int planets_count, CountBuffer count_
       out_image[y] = float3_to_RGBA8(float3(0.0f));
   }
   #pragma omp parallel
-  for (int i = 0; i < planets_count; ++i) {
-    if (!planets[i].check_in_sight(SCREEN_WIDTH, SCREEN_HEIGHT)) continue;
-    LiteMath::int2 floor_pos = LiteMath::int2((int)floor(planets[i].pos.x), (int)floor(planets[i].pos.y));
-    //float cnt = 0;
-    //int r = 5;
-    //for (int x = floor_pos.x  / count_buffer.cell_size - r; x < floor_pos.x / count_buffer.cell_size + r; ++x) {
-    //  for (int y = floor_pos.y / count_buffer.cell_size - r; y < floor_pos.y / count_buffer.cell_size + r; ++y) {
-    //    if (x >= 0 && x < count_buffer.width && y >= 0 && y < count_buffer.height)
-    //      cnt += count_buffer.buffer[x][y];
-    //  }
-    //}
-    //cnt /= (4 * r * r);
-    out_image[floor_pos.y*W + floor_pos.x] = float3_to_RGBA8(LiteMath::float3(1.0f));
+  for (int x = 0; x < gravity_buffer.buffer_sizes[0].x; ++x) {
+    for (int y = 0; y < gravity_buffer.buffer_sizes[0].y; ++y) {
+      if (gravity_buffer.buffer_levels[0][y * gravity_buffer.buffer_sizes[0].x + x] != 0) {
+        float sum = 0;
+        for (int i = 0; i < gravity_buffer.cell_sizes.size(); ++i) {
+          LiteMath::int2 floor_pos = LiteMath::int2(x / gravity_buffer.cell_sizes[i], y / gravity_buffer.cell_sizes[i]);
+          sum += (float)gravity_buffer.buffer_levels[i][floor_pos.y * gravity_buffer.buffer_sizes[i].x + floor_pos.x] / gravity_buffer.cell_sizes[i] / gravity_buffer.cell_sizes[i];
+        }
+        
+        sum /= gravity_buffer.cell_sizes.size();
+        sum *= gradient_k;
+        //std::cout << sum << std::endl;
+        out_image[y * W + x] = float3_to_RGBA8(gradient(sum));
+      }
+    }
   }
 }
 
@@ -146,15 +149,24 @@ int main(int argc, char **args)
   for (int i = 0; i < planet_count; ++i) {
     planets[i].pos.x = float(rand()) / RAND_MAX * SCREEN_WIDTH;
     planets[i].pos.y = float(rand()) / RAND_MAX * SCREEN_HEIGHT;
-    planets[i].m = std::min(max_m, 100000 / (rand() % max_m + 1)) * 1000;
+    planets[i].m = 1;
   }
+  std::cout << "Gradient koef:\n";
+  std::cin >> gradient_k;
   //planets[0].m = 10000000;
   //planets[planet_count - 1].m = 1000000;
-  std::cout << "Cell size\n";
-  int cell_size;
-  std::cin >> cell_size;
-  CountBuffer count_buffer(planets, SCREEN_WIDTH, SCREEN_HEIGHT, cell_size);
+  std::cout << "Buffer levels\n";
+  int levels_count;
+  std::cin >> levels_count;
+  std::vector <int> cell_sizes(levels_count);
+  for (int i = 0; i < levels_count; ++i) {
+    std::cin >> cell_sizes[i];
+  }
+  GravityBuffer gravity_buffer(planets, cell_sizes, LiteMath::int2(SCREEN_WIDTH, SCREEN_HEIGHT));
 
+  for (int i = 0; i < gravity_buffer.cell_sizes.size(); ++i) {
+    std::cout << gravity_buffer.buffer_sizes[i].x << ' ' << gravity_buffer.buffer_sizes[i].y << '\n'; 
+  }
 
   auto time = std::chrono::high_resolution_clock::now();
   auto prev_time = time;
@@ -200,16 +212,16 @@ int main(int argc, char **args)
       }
     }
     
-    count_buffer.build_gravity_buffer();
+    //count_buffer.build_gravity_buffer();
     
     for (int i = 0; i < planet_count; ++i) {
-      planets[i].update_pos(count_buffer);
+      planets[i].update_pos(gravity_buffer);
     }
 
     
     
     // Render the scene
-    render(planets, planet_count, count_buffer,
+    render(planets, planet_count, gravity_buffer,
       pixels.data(), SCREEN_WIDTH, SCREEN_HEIGHT);
 
     // Update the texture with the pixel buffer

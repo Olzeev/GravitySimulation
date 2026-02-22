@@ -3,17 +3,17 @@
 
 class Planet;
 
-class CountBuffer{
+class GravityBuffer{
     public:
-    int width, height;
-    int cell_size;
-    std::vector <std::vector <int>> buffer;
-    std::vector <std::vector <LiteMath::float2>> gravity_buffer;
-    CountBuffer(std::vector <Planet>, int, int, int);
-    ~CountBuffer();
+    
+    std::vector <int> cell_sizes;
+    std::vector <LiteMath::int2> buffer_sizes;
+    std::vector <std::vector <int>> buffer_levels;
+    GravityBuffer(std::vector <Planet> &planets, std::vector<int> cell_sizes, LiteMath::int2 screen_size);
+    ~GravityBuffer();
 
   
-    void build_gravity_buffer();
+    //void build_gravity_buffer();
     void update(LiteMath::float2 prev_pos, LiteMath::float2 new_pos, int m);
 };
 
@@ -26,6 +26,6 @@ class Planet{
     Planet();
     ~Planet();
     bool check_in_sight(int, int);
-    void update_pos(CountBuffer &buffer);
+    void update_pos(GravityBuffer &buffer);
 };
 
